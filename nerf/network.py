@@ -1,3 +1,5 @@
+import numpy as np
+import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,6 +22,7 @@ class NeRFNetwork(NeRFRenderer):
                  num_layers_bg=2,
                  hidden_dim_bg=64,
                  bound=1,
+                 use_sh=False,
                  **kwargs,
                  ):
         super().__init__(bound, **kwargs)
@@ -101,10 +104,19 @@ class NeRFNetwork(NeRFRenderer):
 
         h = x
         for l in range(self.num_layers):
+            ''' test space
+            m = copy.deepcopy(self.sigma_net[l])
+            temp_numpy = m.cpu().weight.numpy()
+            np.savetxt(f"D:\\workwork\\path_nerf\\ngp\\data\\sigma_net_{l}_weight_{temp_numpy.shape[0]}_{temp_numpy.shape[1]}.txt",temp_numpy)
+
+            '''
             h = self.sigma_net[l](h)
             if l != self.num_layers - 1:
                 h = F.relu(h, inplace=True)
-
+        '''
+        temp_numpy = h.cpu().numpy()
+        np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\sigma_net.txt",temp_numpy)
+        '''
         #sigma = F.relu(h[..., 0])
         sigma = trunc_exp(h[..., 0])
         geo_feat = h[..., 1:]
@@ -114,10 +126,21 @@ class NeRFNetwork(NeRFRenderer):
         d = self.encoder_dir(d)
         h = torch.cat([d, geo_feat], dim=-1)
         for l in range(self.num_layers_color):
+            ''' test space
+            m = copy.deepcopy(self.color_net[l])
+            temp_numpy = m.cpu().weight.numpy()
+            np.savetxt(f"D:\\workwork\\path_nerf\\ngp\\data\\color_net_{l}_weight_{temp_numpy.shape[0]}_{temp_numpy.shape[1]}.txt",temp_numpy)
+
+            '''
             h = self.color_net[l](h)
             if l != self.num_layers_color - 1:
                 h = F.relu(h, inplace=True)
         
+        '''
+        temp_numpy = h.cpu().numpy()
+        np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\color_net.txt",temp_numpy)
+        '''
+
         # sigmoid activation for rgb
         color = torch.sigmoid(h)
 

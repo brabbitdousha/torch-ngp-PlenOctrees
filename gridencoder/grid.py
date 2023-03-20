@@ -37,11 +37,15 @@ class _grid_encode(Function):
         C = embeddings.shape[1] # embedding dim for each level
         S = np.log2(per_level_scale) # resolution multiplier at each level, apply log2 for later CUDA exp2f
         H = base_resolution # base resolution
+        '''test space
+        temp_numpy = np.array([B, D, C, L, S, H])
+        np.savetxt("D:\\workwork\\path_nerf\\ngp\\input\\BDCLSH.txt",temp_numpy)
+        '''
 
         # manually handle autocast (only use half precision embeddings, inputs must be float for enough precision)
         # if C % 2 != 0, force float, since half for atomicAdd is very slow.
-        if torch.is_autocast_enabled() and C % 2 == 0:
-            embeddings = embeddings.to(torch.half)
+        #if torch.is_autocast_enabled() and C % 2 == 0:
+        #    embeddings = embeddings.to(torch.half)
 
         # L first, optimize cache for cuda kernel, but needs an extra permute later
         outputs = torch.empty(L, B, C, device=inputs.device, dtype=embeddings.dtype)
@@ -50,7 +54,13 @@ class _grid_encode(Function):
             dy_dx = torch.empty(B, L * D * C, device=inputs.device, dtype=embeddings.dtype)
         else:
             dy_dx = None
+        '''test space
+        temp_numpy = embeddings.cpu().numpy()
+        np.savetxt("D:\\workwork\\path_nerf\\ngp\\data\\embeddings.txt",temp_numpy)
 
+        temp_numpy = offsets.cpu().numpy()
+        np.savetxt("D:\\workwork\\path_nerf\\ngp\\data\\offsets.txt",temp_numpy)
+        '''
         _backend.grid_encode_forward(inputs, embeddings, offsets, outputs, B, D, C, L, S, H, dy_dx, gridtype, align_corners, interpolation)
 
         # permute back to [B, L * C]

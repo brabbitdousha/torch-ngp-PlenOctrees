@@ -337,11 +337,17 @@ class NeRFRenderer(nn.Module):
             rays_t = nears.clone() # [N]
 
             step = 0
+            total_ray_counter = 0
+            loop_counter = 0
             
             while step < max_steps:
 
                 # count alive rays 
                 n_alive = rays_alive.shape[0]
+                total_ray_counter+=n_alive
+                loop_counter = loop_counter + 1
+
+
                 
                 # exit loop
                 if n_alive <= 0:
@@ -349,6 +355,56 @@ class NeRFRenderer(nn.Module):
 
                 # decide compact_steps
                 n_step = max(min(N // n_alive, 8), 1)
+
+                '''test space
+                test_n_alive = int(1)
+                test_n_step = int(8)
+                test_num = int(52296)
+                test_rays_alive = torch.arange(test_n_alive, dtype=torch.int32, device=device)
+                test_rays_t = rays_t[test_num:test_num+1]
+                test_rays_o = rays_o[test_num:test_num+1,:]
+                test_rays_d = rays_d[test_num:test_num+1,:]
+                test_nears = nears[test_num:test_num+1]
+                test_fars = fars[test_num:test_num+1]
+                test_xyzs, test_dirs, test_deltas = raymarching.march_rays(test_n_alive, test_n_step, test_rays_alive, test_rays_t, test_rays_o, test_rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, test_nears, test_fars, 128, perturb if step == 0 else False, dt_gamma, max_steps)
+                sigmas, rgbs = self(test_xyzs, test_dirs)
+                #test_xyzs = test_xyzs[0:8,:]
+                #test_dirs = test_dirs[0:8,:]
+                #test_deltas = test_deltas[0:8,:]
+                '''
+                '''test space
+                temp_numpy = self.density_bitfield.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\data\\density_bitfield.txt",temp_numpy)
+                '''    
+                '''
+                temp_numpy = test_rays_t.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\input\\rays_t.txt",temp_numpy)
+                
+                temp_numpy = test_rays_o.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\input\\rays_o.txt",temp_numpy)
+
+                temp_numpy = test_rays_d.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\input\\rays_d.txt",temp_numpy)
+
+                temp_numpy = test_nears.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\input\\nears.txt",temp_numpy)
+
+                temp_numpy = test_fars.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\input\\fars.txt",temp_numpy)
+
+
+                temp_numpy = test_xyzs.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\xyzs.txt",temp_numpy)
+
+                temp_numpy = test_dirs.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\dirs.txt",temp_numpy)
+
+                temp_numpy = test_deltas.cpu().numpy()
+                np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\deltas.txt",temp_numpy)
+
+                sigmas, rgbs = self(test_xyzs, test_dirs)
+                '''
+                
 
                 xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps)
 
