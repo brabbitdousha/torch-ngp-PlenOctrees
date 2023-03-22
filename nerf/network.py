@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from encoding import get_encoder
 from activation import trunc_exp
 from .renderer import NeRFRenderer
+from .renderer import computeRGB
 
 
 class NeRFNetwork(NeRFRenderer):
@@ -23,6 +24,7 @@ class NeRFNetwork(NeRFRenderer):
                  hidden_dim_bg=64,
                  bound=1,
                  use_sh=False,
+                 sh_dim=9,
                  **kwargs,
                  ):
         super().__init__(bound, **kwargs)
@@ -32,7 +34,11 @@ class NeRFNetwork(NeRFRenderer):
         self.hidden_dim = hidden_dim
         self.geo_feat_dim = geo_feat_dim
         self.encoder, self.in_dim = get_encoder(encoding, desired_resolution=2048 * bound)
+        self.use_sh = use_sh
+        self.sh_dim = sh_dim
 
+        output_ch = sh_dim*3+1
+        
         sigma_net = []
         for l in range(num_layers):
             if l == 0:
@@ -42,8 +48,18 @@ class NeRFNetwork(NeRFRenderer):
             
             if l == num_layers - 1:
                 out_dim = 1 + self.geo_feat_dim # 1 sigma + 15 SH features for color
+                if(use_sh):
+                    out_dim = output_ch # 1 sigma + sh_dimX3 for SH
             else:
                 out_dim = hidden_dim
+            
+            #add layer
+            '''
+            if l == num_layers - 1:
+                if use_sh:
+                    self.num_layers = self.num_layers+1
+                    sigma_net.append(nn.Linear(hidden_dim, hidden_dim, bias=False))
+            '''
             
             sigma_net.append(nn.Linear(in_dim, out_dim, bias=False))
 
@@ -117,32 +133,42 @@ class NeRFNetwork(NeRFRenderer):
         temp_numpy = h.cpu().numpy()
         np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\sigma_net.txt",temp_numpy)
         '''
-        #sigma = F.relu(h[..., 0])
-        sigma = trunc_exp(h[..., 0])
-        geo_feat = h[..., 1:]
+            
+        if not self.use_sh:
+            #sigma = F.relu(h[..., 0])
+            sigma = trunc_exp(h[..., 0])
+            geo_feat = h[..., 1:]
 
-        # color
+            # color
         
-        d = self.encoder_dir(d)
-        h = torch.cat([d, geo_feat], dim=-1)
-        for l in range(self.num_layers_color):
-            ''' test space
-            m = copy.deepcopy(self.color_net[l])
-            temp_numpy = m.cpu().weight.numpy()
-            np.savetxt(f"D:\\workwork\\path_nerf\\ngp\\data\\color_net_{l}_weight_{temp_numpy.shape[0]}_{temp_numpy.shape[1]}.txt",temp_numpy)
+            d = self.encoder_dir(d)
+            h = torch.cat([d, geo_feat], dim=-1)
+            for l in range(self.num_layers_color):
+                ''' test space
+                m = copy.deepcopy(self.color_net[l])
+                temp_numpy = m.cpu().weight.numpy()
+                np.savetxt(f"D:\\workwork\\path_nerf\\ngp\\data\\color_net_{l}_weight_{temp_numpy.shape[0]}_{temp_numpy.shape[1]}.txt",temp_numpy)
 
+                '''
+                h = self.color_net[l](h)
+                if l != self.num_layers_color - 1:
+                    h = F.relu(h, inplace=True)
+        
             '''
-            h = self.color_net[l](h)
-            if l != self.num_layers_color - 1:
-                h = F.relu(h, inplace=True)
-        
-        '''
-        temp_numpy = h.cpu().numpy()
-        np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\color_net.txt",temp_numpy)
-        '''
+            temp_numpy = h.cpu().numpy()
+            np.savetxt("D:\\workwork\\path_nerf\\ngp\\output\\color_net.txt",temp_numpy)
+            '''
 
-        # sigmoid activation for rgb
-        color = torch.sigmoid(h)
+            # sigmoid activation for rgb
+            color = torch.sigmoid(h)
+        else:
+            sigma = F.relu(h[..., 0])
+            #sigma = trunc_exp(h[..., 0])
+            coeff = h[..., 1:].reshape((-1, self.sh_dim, 3))
+
+            color = computeRGB(d, coeff, self.sh_dim)
+            # sigmoid activation for rgb
+            color = torch.sigmoid(color)
 
         return sigma, color
 

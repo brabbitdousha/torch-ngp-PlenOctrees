@@ -147,13 +147,12 @@ if __name__ == '__main__':
         
         else:
             valid_loader = NeRFDataset(opt, device=device, type='val', downscale=1).dataloader()
+            # also test
+            test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
 
             max_epoch = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
             trainer.train(train_loader, valid_loader, max_epoch)
 
-            # also test
-            test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
-            
             if test_loader.has_gt:
                 trainer.evaluate(test_loader) # blender has gt, so evaluate it.
             

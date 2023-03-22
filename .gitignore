@@ -6,6 +6,8 @@ build/
 tmp*
 data/
 trial*/
+old_*/
+SH_*/
 .vs/
 
 #**dnerf*
