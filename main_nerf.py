@@ -16,11 +16,12 @@ if __name__ == '__main__':
     parser.add_argument('path', type=str)
     parser.add_argument('-O', action='store_true', help="equals --fp16 --cuda_ray --preload")
     parser.add_argument('--test', action='store_true', help="test mode")
+    parser.add_argument('--octree', action='store_true', help="to octree")
     parser.add_argument('--workspace', type=str, default='workspace')
     parser.add_argument('--seed', type=int, default=0)
 
     ### training options
-    parser.add_argument('--iters', type=int, default=50000, help="training iters")
+    parser.add_argument('--iters', type=int, default=51200, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-2, help="initial learning rate")
     parser.add_argument('--ckpt', type=str, default='latest')
     parser.add_argument('--num_rays', type=int, default=4096, help="num rays sampled per image for each training step")
@@ -111,7 +112,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     if opt.test:
-        
+
         metrics = [PSNRMeter(), LPIPSMeter(device=device)]
         trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, criterion=criterion, fp16=opt.fp16, metrics=metrics, use_checkpoint=opt.ckpt)
 
@@ -129,6 +130,12 @@ if __name__ == '__main__':
             
             trainer.save_mesh(resolution=256, threshold=10)
     
+    elif (opt.octree and opt.use_sh):
+        metrics = [PSNRMeter(), LPIPSMeter(device=device)]
+        trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, criterion=criterion, fp16=opt.fp16, metrics=metrics, use_checkpoint=opt.ckpt)
+    
+        trainer.to_octree() # go!
+            
     else:
 
         optimizer = lambda model: torch.optim.Adam(model.get_params(opt.lr), betas=(0.9, 0.99), eps=1e-15)

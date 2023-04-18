@@ -605,6 +605,17 @@ class Trainer(object):
         pred_depth = outputs['depth'].reshape(-1, H, W)
 
         return pred_rgb, pred_depth
+    
+    def octree_step(self, bg_color=None, perturb=False):  
+
+        if bg_color is not None:
+            bg_color = bg_color.to(self.device)
+
+        child, density_coeff = self.model.render_octree(staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
+
+
+
+        return child, density_coeff
 
 
     def save_mesh(self, save_path=None, resolution=256, threshold=10):
@@ -713,6 +724,41 @@ class Trainer(object):
             imageio.mimwrite(os.path.join(save_path, f'{name}_depth.mp4'), all_preds_depth, fps=25, quality=8, macro_block_size=1)
 
         self.log(f"==> Finished Test.")
+
+    def to_octree(self, save_path=None, name=None):
+
+        if save_path is None:
+            save_path = os.path.join(self.workspace, 'octree')
+
+        if name is None:
+            name = f'{self.name}_ep{self.epoch:04d}'
+
+        os.makedirs(save_path, exist_ok=True)
+        
+        self.log(f"==> Start convert to octree, save results to {save_path}")
+
+        self.model.eval()
+
+        with torch.no_grad():          
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                child, density_coeff = self.octree_step()
+                data = {}
+                data['invradius3'] = np.array([self.model.iv0, self.model.iv1, self.model.iv2]).astype(np.float32)
+                data['offset'] = np.array([self.model.offset0,  self.model.offset1,  self.model.offset2]).astype(np.float32)
+                data['data_format'] = "SH9"
+                data['data_dim'] = 28
+                data['child'] = child.astype(np.float32)
+
+                density_coeff1 = density_coeff[:,:,:,:, 1:28].reshape((-1, 2,2,2,9, 3))
+                density_coeff1 = np.concatenate((density_coeff1[:,:,:,:,:,0],density_coeff1[:,:,:,:,:,1],density_coeff1[:,:,:,:,:,2]), axis=4)
+                data['data'] = np.concatenate((density_coeff1, density_coeff[:,:,:,:, 0:1].reshape((density_coeff.shape[0], density_coeff.shape[1], density_coeff.shape[2], density_coeff.shape[3], 1))), axis=4)
+
+                np.savez(os.path.join(save_path, f'{name}.npz'), invradius3 = data['invradius3'], offset = data['offset'], data_format = data['data_format'], data_dim = data['data_dim'], child = data['child'].astype(np.int32), data = data['data'].astype(np.float16))   
+
+            #if self.opt.color_space == 'linear':
+            #   preds = linear_to_srgb(preds)
+
+        self.log(f"==> Finished converting to octree.")
     
     # [GUI] just train for 16 steps, without any other overhead that may slow down rendering.
     def train_gui(self, train_loader, step=16):

@@ -162,8 +162,8 @@ class NeRFNetwork(NeRFRenderer):
             # sigmoid activation for rgb
             color = torch.sigmoid(h)
         else:
-            sigma = F.relu(h[..., 0])
-            #sigma = trunc_exp(h[..., 0])
+            #sigma = F.relu(h[..., 0])
+            sigma = trunc_exp(h[..., 0])
             coeff = h[..., 1:].reshape((-1, self.sh_dim, 3))
 
             color = computeRGB(d, coeff, self.sh_dim)
@@ -253,3 +253,22 @@ class NeRFNetwork(NeRFRenderer):
             params.append({'params': self.bg_net.parameters(), 'lr': lr})
         
         return params
+    
+    @torch.no_grad()
+    def octree_forward(self, x):
+        # x: [N, 3], in [-bound, bound]
+        # d: [N, 3], nomalized in [-1, 1]
+
+        # sigma
+        x = self.encoder(x, bound=self.bound)
+
+        h = x
+        for l in range(self.num_layers):
+            h = self.sigma_net[l](h)
+            if l != self.num_layers - 1:
+                h = F.relu(h, inplace=True)
+        
+        #sigma = F.relu(h[..., 0])
+        sigma = trunc_exp(h[..., 0])
+
+        return sigma, h

@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
+import queue
 
 import raymarching
 from .utils import custom_meshgrid
@@ -118,6 +120,15 @@ def plot_pointcloud(pc, color=None):
     sphere = trimesh.creation.icosphere(radius=1)
     trimesh.Scene([pc, axes, sphere]).show()
 
+class TreeNode:
+    def __init__(self, flag=0, xyz = (0,0,0)):
+        self.node_list = None
+        self.xyz = xyz
+        self.flag = flag
+
+@torch.no_grad()
+def line_interp(a,b,t):
+    return a+(b-a)*t
 
 class NeRFRenderer(nn.Module):
     def __init__(self,
@@ -689,3 +700,198 @@ class NeRFRenderer(nn.Module):
             results = _run(rays_o, rays_d, **kwargs)
 
         return results
+    
+    @torch.no_grad()
+    def vis_density(self, mins, maxs, L= 32):
+    
+        x = torch.linspace(mins[0],maxs[0],steps=L).cuda()
+        y = torch.linspace(mins[1],maxs[1],steps=L).cuda()
+        z = torch.linspace(mins[2],maxs[2],steps=L).cuda()
+        grid_x ,grid_y,grid_z = torch.meshgrid(x, y,z)
+        xyz = torch.stack([grid_x ,grid_y,grid_z], dim = -1)  #(L,L,L,3)
+
+        xyz = xyz.reshape((-1,3)) #(L*L*L,3)
+
+        xyzs = xyz.split(5000, dim=0)
+
+        sigmas = []
+        coeffs = []
+        for i in tqdm(xyzs):
+            with torch.no_grad():
+                density, coeff = self.octree_forward(i) #(L*L*L,1)
+                sigmas.append(density.detach().cpu())
+                coeffs.append(coeff.detach().cpu())
+                
+        sigmas = torch.cat(sigmas, dim=0)
+        coeffs = torch.cat(coeffs, dim=0)
+
+        return sigmas, coeffs
+    
+    @torch.no_grad()
+    def gen_octree(self,x, y, z, size):
+        
+        print("\r{0}/{1}".format(self.vis_count,self.L*self.L*self.L),end="")
+        self.vis_count = self.vis_count+1
+        if(size<=2):
+            node_list = []
+            flag=False
+            for i in range(x, x+2):
+                for j in range(y, y+2):
+                    for k in range(z, z+2):
+                        node_list.append(TreeNode(flag=0, xyz = (i,j,k)))
+                        if(self.grid[i,j,k]):
+                            flag = True
+            
+            node = TreeNode(1, (x+size//2, y+size//2, z+size//2))
+            if(flag==True):
+                node.node_list = node_list
+            else:
+                node.node_list = None
+                node.flag=0
+            return flag, node
+
+        flag = False
+        node_list = []
+        
+        cnt=1
+        for i in range(x, x+size, size//2):
+            for j in range(y, y+size, size//2):
+                for k in range(z, z+size, size//2):
+                    _flag, node = self.gen_octree(i, j, k, size//2)
+                    
+                    node_list.append(node)
+                    if(_flag==True):
+                        flag = _flag
+                    cnt+=1
+        
+        node = TreeNode(1, (x+size//2, y+size//2, z+size//2))
+        if(flag):
+            node.node_list = node_list
+        else:
+            node.flag=0
+        
+        return flag, node
+    
+    @torch.no_grad()
+    def BFS(self, node, coeffs):
+        L = self.L
+        x_val = self.x_val
+        y_val = self.y_val
+        z_val = self.z_val
+        q = queue.Queue()
+        cnt_q = queue.Queue()
+        q.put(node)
+        cnt_q.put(0)
+        cnt=1
+        total_cnt=0
+        child = []
+        density_coeff = []
+        sample_count = 4
+        vis_count = 0
+        while(not q.empty()):
+            cnt_tmp = cnt
+            cnt = 0
+            for i in range(cnt_tmp):
+                node = q.get()
+                cnt_num = cnt_q.get()
+                
+                for j in range(len(node.node_list)):
+                    vis_count = vis_count+1
+                    print("\r{0}/{1}".format(vis_count,L*L*L),end="")
+                    xyz = node.node_list[j].xyz
+                    xx = xyz[0]
+                    yy = xyz[1]
+                    zz = xyz[2]
+                    now_coeff = coeffs[xx:xx+1, yy:yy+1, zz:zz+1]
+                    '''sample points
+                    xx_left = xx
+                    xx_right = xx
+                    if(xx-1>=0):
+                        xx_left = xx-1
+                    if(xx+1<L):
+                        xx_right = xx+1
+                    
+                    yy_left = yy
+                    yy_right = yy
+                    if(yy-1>=0):
+                        yy_left = yy-1
+                    if(yy+1<L):
+                        yy_right = yy+1
+
+                    zz_left = zz
+                    zz_right = zz
+                    if(zz-1>=0):
+                        zz_left = zz-1
+                    if(zz+1<L):
+                        zz_right = zz+1
+                    
+                    x_list = torch.linspace(line_interp(x_val[xx_left],x_val[xx],0.8),line_interp(x_val[xx],x_val[xx_right],0.2),steps=sample_count).cuda()
+                    y_list = torch.linspace(line_interp(y_val[yy_left],y_val[yy],0.8),line_interp(y_val[yy],y_val[yy_right],0.2),steps=sample_count).cuda()
+                    z_list = torch.linspace(line_interp(z_val[zz_left],z_val[zz],0.8),line_interp(z_val[zz],z_val[zz_right],0.2),steps=sample_count).cuda()
+                    grid_x ,grid_y,grid_z = torch.meshgrid(x_list, y_list, z_list)
+                    xyz_list = torch.stack([grid_x ,grid_y,grid_z], dim = -1)  #(L,L,L,3)
+
+                    xyz_list = xyz_list.reshape((-1,3)) #(L*L*L,3)
+
+                    coeff_box = []
+                    coeff_box.append(now_coeff.reshape(1,now_coeff.shape[3]))
+                    with torch.no_grad():
+                        _, coeff = self.octree_forward(xyz_list)
+                        coeff_box.append(coeff.detach().cpu().numpy())
+
+                    coeff_box = np.concatenate(coeff_box, axis=0)
+                    '''
+                    
+                    density_coeff.append(coeffs[xx, yy, zz]) #coeffs[xx, yy, zz] coeff_box.mean(0)
+                    if(node.node_list[j].flag==1):
+                        total_cnt+=1
+                        q.put(node.node_list[j])
+                        cnt_q.put(total_cnt)
+                        child.append(total_cnt - cnt_num)
+                        cnt += 1
+                    else:
+                        child.append(0)
+                        
+        child = np.array(child).reshape((-1,2,2,2))
+        density_coeff = np.array(density_coeff)
+        density_coeff = density_coeff.reshape((-1,2,2,2,28))
+        return child, density_coeff
+
+    @torch.no_grad()
+    def render_octree(self, staged=False, max_ray_batch=4096, **kwargs):
+        L = 128
+        self.L = L
+        iv0 = 0.5
+        iv1 = 0.5
+        iv2 = 0.5
+        offset0 = 0.5
+        offset1 = 0.5
+        offset2 = 0.5
+        #should be self.aabb_infer one day
+        maxs = (np.array([1.0, 1.0, 1.0]) - np.array([offset0, offset1, offset2]))/np.array([iv0,iv1,iv2])
+        mins = (np.array([0.0, 0.0, 0.0]) - np.array([offset0, offset1, offset2]))/np.array([iv0,iv1,iv2])
+        print("start visiting density....")
+        sigma, coeffs = self.vis_density(mins,maxs, L)
+
+        self.grid = sigma.reshape((L, L, L))>0.01
+        print("start building octree....")
+        self.vis_count = 0
+        flag, node = self.gen_octree(0,0,0,L)
+
+        coeffs = coeffs.reshape((L, L, L, 28)).cpu().numpy()
+
+        self.x_val = torch.linspace(mins[0],maxs[0],steps=L).cuda()
+        self.y_val = torch.linspace(mins[1],maxs[1],steps=L).cuda()
+        self.z_val = torch.linspace(mins[2],maxs[2],steps=L).cuda()
+
+        print("start BFS travel....")
+        child, density_coeff = self.BFS(node, coeffs)
+
+        self.iv0 = iv0
+        self.iv1 = iv1
+        self.iv2 = iv2
+        self.offset0 = offset0
+        self.offset1 = offset1
+        self.offset2 = offset2
+
+        return child, density_coeff
