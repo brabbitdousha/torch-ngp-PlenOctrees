@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=0)
 
     ### training options
-    parser.add_argument('--iters', type=int, default=51200, help="training iters")
+    parser.add_argument('--iters', type=int, default=50000, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-2, help="initial learning rate")
     parser.add_argument('--ckpt', type=str, default='latest')
     parser.add_argument('--num_rays', type=int, default=4096, help="num rays sampled per image for each training step")
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_sh', action='store_true', help="replace rgb with SH")
 
     ### dataset options
-    parser.add_argument('--color_space', type=str, default='linear', help="Color space, supports (linear, srgb)")
+    parser.add_argument('--color_space', type=str, default='srgb', help="Color space, supports (linear, srgb)")
     parser.add_argument('--preload', action='store_true', help="preload all data into GPU, accelerate training but use more GPU memory")
     # (the default value is for the fox dataset)
     parser.add_argument('--bound', type=float, default=2, help="assume the scene is bounded in box[-bound, bound]^3, if > 1, will invoke adaptive ray marching.")
