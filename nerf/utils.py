@@ -502,6 +502,9 @@ class Trainer(object):
             #bg_color = torch.rand(3, device=self.device) # [3], frame-wise random.
             bg_color = torch.rand_like(images[..., :3]) # [N, 3], pixel-wise random.
 
+        ''' test one point
+        bg_color = 0
+        '''
         if C == 4:
             gt_rgb = images[..., :3] * images[..., 3:] + bg_color * (1 - images[..., 3:])
         else:
@@ -574,7 +577,7 @@ class Trainer(object):
             images[..., :3] = srgb_to_linear(images[..., :3])
 
         # eval with fixed background color
-        bg_color = 1
+        bg_color = 1#changed to 0 for one point
         if C == 4:
             gt_rgb = images[..., :3] * images[..., 3:] + bg_color * (1 - images[..., 3:])
         else:

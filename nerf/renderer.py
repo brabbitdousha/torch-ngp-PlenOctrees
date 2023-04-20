@@ -504,6 +504,124 @@ class NeRFRenderer(nn.Module):
 
         return results
 
+#my part--------------
+    def run_dummy_cuda(self, rays_o, rays_d, dt_gamma=0, bg_color=None, perturb=False, force_all_rays=False, max_steps=1024, T_thresh=1e-4, **kwargs):
+        # rays_o, rays_d: [B, N, 3], assumes B == 1
+        # return: image: [B, N, 3], depth: [B, N]
+
+        prefix = rays_o.shape[:-1]
+        rays_o = rays_o.contiguous().view(-1, 3)
+        rays_d = rays_d.contiguous().view(-1, 3)
+
+        N = rays_o.shape[0] # N = B * N, in fact
+        device = rays_o.device
+
+        # pre-calculate near far
+        nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near)
+
+        # mix background color
+        if self.bg_radius > 0:
+            # use the bg model to calculate bg_color
+            sph = raymarching.sph_from_ray(rays_o, rays_d, self.bg_radius) # [N, 2] in [-1, 1]
+            bg_color = self.background(sph, rays_d) # [N, 3]
+        elif bg_color is None:
+            bg_color = 1
+
+        results = {}
+
+        if self.training:
+            # setup counter
+            counter = self.step_counter[self.local_step % 16]
+            counter.zero_() # set to 0
+            self.local_step += 1
+
+            xyzs, dirs, deltas, rays = raymarching.march_rays_train(rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, counter, self.mean_count, perturb, 128, force_all_rays, dt_gamma, max_steps)
+
+            #plot_pointcloud(xyzs.reshape(-1, 3).detach().cpu().numpy())
+            
+            sigmas, rgbs_15 = self(xyzs)
+            rgbs = self.forward_color(rgbs_15,dirs)
+            # density_outputs = self.density(xyzs) # [M,], use a dict since it may include extra things, like geo_feat for rgb.
+            # sigmas = density_outputs['sigma']
+            # rgbs = self.color(xyzs, dirs, **density_outputs)
+            sigmas = self.density_scale * sigmas
+
+            #print(f'valid RGB query ratio: {mask.sum().item() / mask.shape[0]} (total = {mask.sum().item()})')
+
+            # len(sigmas.shape) should be 1
+            weights_sum, depth, image = raymarching.dummpy_composite_rays_train(sigmas, rgbs, deltas, rays, T_thresh)
+
+            #image = self.forward_color(image,rays_d)
+
+            image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
+            depth = torch.clamp(depth - nears, min=0) / (fars - nears)
+            image = image.view(*prefix, 3)
+            depth = depth.view(*prefix)
+            
+            results['weights_sum'] = weights_sum
+
+        else:
+           
+            # allocate outputs 
+            # if use autocast, must init as half so it won't be autocasted and lose reference.
+            #dtype = torch.half if torch.is_autocast_enabled() else torch.float32
+            # output should always be float32! only network inference uses half.
+            dtype = torch.float32
+            
+            weights_sum = torch.zeros(N, dtype=dtype, device=device)
+            depth = torch.zeros(N, dtype=dtype, device=device)
+            image = torch.zeros(N, 3, dtype=dtype, device=device)
+            
+            n_alive = N
+            rays_alive = torch.arange(n_alive, dtype=torch.int32, device=device) # [N]
+            rays_t = nears.clone() # [N]
+
+            step = 0
+            #total_ray_counter = 0
+            #loop_counter = 0
+            
+            while step < max_steps:
+
+                # count alive rays 
+                n_alive = rays_alive.shape[0]
+                #total_ray_counter+=n_alive
+                #loop_counter = loop_counter + 1
+                
+                # exit loop
+                if n_alive <= 0:
+                    break
+
+                # decide compact_steps
+                n_step = max(min(N // n_alive, 8), 1)          
+
+                xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps)
+
+                sigmas, rgbs_15 = self(xyzs)
+                rgbs = self.forward_color(rgbs_15,dirs)
+                # density_outputs = self.density(xyzs) # [M,], use a dict since it may include extra things, like geo_feat for rgb.
+                # sigmas = density_outputs['sigma']
+                # rgbs = self.color(xyzs, dirs, **density_outputs)
+                sigmas = self.density_scale * sigmas
+
+                raymarching.composite_dummy_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image, T_thresh)
+
+                rays_alive = rays_alive[rays_alive >= 0]
+
+                #print(f'step = {step}, n_step = {n_step}, n_alive = {n_alive}, xyzs: {xyzs.shape}')
+
+                step += n_step
+            
+            image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
+            depth = torch.clamp(depth - nears, min=0) / (fars - nears)
+            image = image.view(*prefix, 3)
+            depth = depth.view(*prefix)
+        
+        results['depth'] = depth
+        results['image'] = image
+
+        return results
+#-------------------
+
     @torch.no_grad()
     def mark_untrained_grid(self, poses, intrinsic, S=64):
         # poses: [B, 4, 4]
@@ -669,8 +787,10 @@ class NeRFRenderer(nn.Module):
     def render(self, rays_o, rays_d, staged=False, max_ray_batch=4096, **kwargs):
         # rays_o, rays_d: [B, N, 3], assumes B == 1
         # return: pred_rgb: [B, N, 3]
-
-        if self.cuda_ray:
+        use_one_point = True
+        if(use_one_point):
+            _run = self.run_dummy_cuda
+        elif self.cuda_ray:
             _run = self.run_cuda
         else:
             _run = self.run

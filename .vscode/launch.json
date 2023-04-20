@@ -22,7 +22,7 @@
             "args": [
                 "data/nerf_synthetic/lego",
                 "--workspace",
-                "old_nerf_go",
+                "test_nerf_1_point",
                 "-O",
                 "--bound",
                 "1.0",

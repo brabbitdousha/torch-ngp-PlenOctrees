@@ -92,6 +92,7 @@ if __name__ == '__main__':
     
     seed_everything(opt.seed)
 
+    ''' one point
     model = NeRFNetwork(
         encoding="hashgrid",
         bound=opt.bound,
@@ -102,7 +103,20 @@ if __name__ == '__main__':
         bg_radius=opt.bg_radius,
         use_sh=opt.use_sh
     )
-    
+    '''
+    from nerf.network import NeRF_Dummpy_Network
+
+    model = NeRF_Dummpy_Network(
+        encoding="hashgrid",
+        bound=opt.bound,
+        cuda_ray=opt.cuda_ray,
+        density_scale=1,
+        min_near=opt.min_near,
+        density_thresh=opt.density_thresh,
+        bg_radius=opt.bg_radius,
+        use_sh=opt.use_sh
+    )
+
     print(model)
 
     criterion = torch.nn.MSELoss(reduction='none')
