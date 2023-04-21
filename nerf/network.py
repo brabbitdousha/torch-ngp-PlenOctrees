@@ -295,7 +295,7 @@ class NeRF_Dummpy_Network(NeRFRenderer):
         # sigma network
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
-        geo_feat_dim = 3 #test
+        #geo_feat_dim = 3 #test
         self.geo_feat_dim = geo_feat_dim
         self.encoder, self.in_dim = get_encoder(encoding, desired_resolution=2048 * bound)
         self.use_sh = use_sh

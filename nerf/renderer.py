@@ -572,7 +572,7 @@ class NeRFRenderer(nn.Module):
             
             weights_sum = torch.zeros(N, dtype=dtype, device=device)
             depth = torch.zeros(N, dtype=dtype, device=device)
-            rgb_feature_num = (int)(3)
+            rgb_feature_num = (int)(15)
             image = torch.zeros(N, rgb_feature_num, dtype=dtype, device=device)
             
             n_alive = N
