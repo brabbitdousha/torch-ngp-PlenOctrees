@@ -13,10 +13,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("march_rays_train", &march_rays_train, "march_rays_train (CUDA)");
     m.def("composite_rays_train_forward", &composite_rays_train_forward, "composite_rays_train_forward (CUDA)");
     m.def("composite_rays_train_backward", &composite_rays_train_backward, "composite_rays_train_backward (CUDA)");
-    m.def("composite_dummy_rays_train_forward", &composite_dummy_rays_train_forward, "composite_dummy_rays_train_forward (CUDA)");
-    m.def("composite_dummy_rays_train_backward", &composite_dummy_rays_train_backward, "composite_dummy_rays_train_backward (CUDA)");
+    m.def("composite_dumm_rays_train_forward", &composite_dumm_rays_train_forward, "composite_dumm_rays_train_forward (CUDA)");
+    m.def("composite_dumm_rays_train_backward", &composite_dumm_rays_train_backward, "composite_dumm_rays_train_backward (CUDA)");
     // infer
     m.def("march_rays", &march_rays, "march rays (CUDA)");
     m.def("composite_rays", &composite_rays, "composite rays (CUDA)");
-    m.def("composite_dummy_rays", &composite_dummy_rays, "composite_dummy_rays (CUDA)");
+    m.def("composite_dumm_rays", &composite_dumm_rays, "composite_dumm_rays (CUDA)");
 }

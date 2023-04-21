@@ -306,7 +306,8 @@ class _dummpy_composite_rays_train(Function):
             depth: float, [N, ], the Depth
             image: float, [N, 3], the RGB channel (after multiplying alpha!)
         '''
-        
+        rgb_feature_num = (int)(3)
+
         sigmas = sigmas.contiguous()
         rgbs = rgbs.contiguous()#now they are 15
 
@@ -317,7 +318,7 @@ class _dummpy_composite_rays_train(Function):
         depth = torch.empty(N, dtype=sigmas.dtype, device=sigmas.device)
         image = torch.empty(N, 3, dtype=sigmas.dtype, device=sigmas.device)
 
-        _backend.composite_dummy_rays_train_forward(sigmas, rgbs, deltas, rays, M, N, T_thresh, weights_sum, depth, image)
+        _backend.composite_dumm_rays_train_forward(rgb_feature_num,sigmas, rgbs, deltas, rays, M, N, T_thresh, weights_sum, depth, image)
 
         ctx.save_for_backward(sigmas, rgbs, deltas, rays, weights_sum, depth, image)
         ctx.dims = [M, N, T_thresh]
@@ -329,6 +330,7 @@ class _dummpy_composite_rays_train(Function):
     def backward(ctx, grad_weights_sum, grad_depth, grad_image):
 
         # NOTE: grad_depth is not used now! It won't be propagated to sigmas.
+        rgb_feature_num = (int)(3)
 
         grad_weights_sum = grad_weights_sum.contiguous()
         grad_image = grad_image.contiguous()
@@ -339,7 +341,7 @@ class _dummpy_composite_rays_train(Function):
         grad_sigmas = torch.zeros_like(sigmas)
         grad_rgbs = torch.zeros_like(rgbs)
 
-        _backend.composite_dummy_rays_train_backward(grad_weights_sum, grad_image, sigmas, rgbs, deltas, rays, weights_sum, image, M, N, T_thresh, grad_sigmas, grad_rgbs)
+        _backend.composite_dumm_rays_train_backward(rgb_feature_num,grad_weights_sum, grad_image, sigmas, rgbs, deltas, rays, weights_sum, image, M, N, T_thresh, grad_sigmas, grad_rgbs)
 
         return grad_sigmas, grad_rgbs, None, None, None
 
@@ -448,7 +450,8 @@ class _composite_dummy_rays(Function):
             depth: float, [N,], the depth value
             image: float, [N, 3], the RGB channel (after multiplying alpha!)
         '''
-        _backend.composite_dummy_rays(n_alive, n_step, T_thresh, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image)
+        rgb_feature_num = (int)(3)
+        _backend.composite_dumm_rays(rgb_feature_num,n_alive, n_step, T_thresh, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image)
         return tuple()
 
 

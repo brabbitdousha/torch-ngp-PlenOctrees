@@ -8,6 +8,7 @@ data/
 trial*/
 old_*/
 SH_*/
+test_*/
 .vs/
 
 #**dnerf*
